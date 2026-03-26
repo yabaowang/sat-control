@@ -27,6 +27,7 @@ export default function App() {
     let camRotX = 0.4;
     let isDragging = false;
     let lastMouse = { x: 0, y: 0 };
+    let pixelScale = 1;
 
     const resize = () => {
       const rect = canvas.parentElement.getBoundingClientRect();
@@ -64,7 +65,7 @@ export default function App() {
       const fov = 600;
       const z = v[2] + 8;
       const scale = fov / (z + fov);
-      return [v[0] * scale + w/2, -v[1] * scale + h/2, z, scale];
+      return [v[0] * scale * pixelScale + w/2, -v[1] * scale * pixelScale + h/2, z, scale];
     }
     function applyCamera(v) {
       let r = rotY(v, camRotY);
@@ -84,7 +85,7 @@ export default function App() {
       const earthR = 2.0;
       const center = applyCamera([0, 0, 0]);
       const [cx, cy, cz, sc] = project(center, w, h);
-      const screenR = earthR * sc;
+      const screenR = earthR * sc * pixelScale;
 
       // Earth glow
       const glow = ctx.createRadialGradient(cx, cy, screenR * 0.9, cx, cy, screenR * 1.8);
@@ -386,7 +387,7 @@ export default function App() {
           ctx.globalAlpha = st.b * 0.6;
           ctx.fillStyle = "#fff";
           ctx.beginPath();
-          ctx.arc(p[0], p[1], st.s * p[3] * 0.5, 0, TAU);
+          ctx.arc(p[0], p[1], st.s * 1.5, 0, TAU);
           ctx.fill();
         }
       });
@@ -401,6 +402,7 @@ export default function App() {
 
       const w = canvas.width;
       const h = canvas.height;
+      pixelScale = Math.min(w, h) / 18;
       ctx.clearRect(0, 0, w, h);
 
       // BG gradient
