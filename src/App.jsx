@@ -234,7 +234,7 @@ export default function App() {
         return project(applyCamera(world), w, h);
       }
 
-      const S = 0.52; // satellite scale
+      const S = 1.5; // satellite scale
 
       // --- Draw satellite body (box) ---
       const bodyVerts = [
@@ -276,9 +276,9 @@ export default function App() {
       // --- Solar panels ---
       const panelFaces = [
         // Left panel
-        [[-1.2,-0.02,-0.5], [-3.2,-0.02,-0.5], [-3.2,-0.02,0.5], [-1.2,-0.02,0.5]],
+        [[-1.2,-0.02,-0.5], [-2.2,-0.02,-0.5], [-2.2,-0.02,0.5], [-1.2,-0.02,0.5]],
         // Right panel
-        [[1.2,-0.02,-0.5], [3.2,-0.02,-0.5], [3.2,-0.02,0.5], [1.2,-0.02,0.5]],
+        [[1.2,-0.02,-0.5], [2.2,-0.02,-0.5], [2.2,-0.02,0.5], [1.2,-0.02,0.5]],
       ];
       panelFaces.forEach(pf => {
         const pp = pf.map(v => toScreen(v, S));
@@ -418,7 +418,7 @@ export default function App() {
       }
 
       // --- Body axes arrows ---
-      const axisLen = 2.5;
+      const axisLen = 1.8;
       const axes = [
         { dir: [axisLen, 0, 0], color: "#00ff88", label: "X 滚动" },
         { dir: [0, axisLen, 0], color: "#ff6b35", label: "Y 俯仰" },
@@ -457,7 +457,7 @@ export default function App() {
       });
 
       // --- Velocity direction indicator ---
-      const velEnd = toScreen([5, 0, 0], S);
+      const velEnd = toScreen([2.5, 0, 0], S);
       ctx.strokeStyle = "rgba(255,255,255,0.2)";
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 3]);
@@ -471,7 +471,7 @@ export default function App() {
       ctx.fillText("→ 飞行方向", velEnd[0]+4, velEnd[1]);
 
       // Nadir indicator
-      const nadirEnd = toScreen([0, 0, -4], S);
+      const nadirEnd = toScreen([0, 0, -1.4], S);
       ctx.strokeStyle = "rgba(255,255,255,0.15)";
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 4]);
@@ -663,6 +663,54 @@ export default function App() {
           <span style={{ color: "#00f0ff" }}>━</span> Z 偏航轴（天底方向）<br/>
           <span style={{ color: "#e0b840" }}>━</span> 载荷视轴 &amp; 地面足迹<br/>
           <span style={{ color: "#ffef64" }}>✛</span> 星下点（地面轨迹）
+        </div>
+
+        {/* Angle Terminology Reference Card */}
+        <div style={{
+          position: "absolute", bottom: 36, right: 10,
+          background: "rgba(5,8,20,0.88)", border: "1px solid rgba(255,255,255,0.07)",
+          borderRadius: "8px", padding: "11px 14px",
+          fontSize: "10px", fontFamily: "monospace", color: "#475569",
+          lineHeight: 1.85, backdropFilter: "blur(6px)", width: "230px",
+        }}>
+          <div style={{ color:"#334155", fontWeight:700, fontSize:"9px", letterSpacing:"2px", marginBottom:"7px" }}>
+            姿态角 中英术语对照
+          </div>
+
+          <div>
+            <span style={{color:"#00f0ff", fontWeight:700}}>偏航 Yaw</span>
+            <span style={{color:"#334155"}}> = 偏摆 / Heading rot.</span><br/>
+            <span style={{color:"#2d4060", fontSize:"9px"}}>绕天底(Z)轴旋转 · 卫星"左右转身"<br/>
+            ⚠ 偏摆≈偏航，同义可互用</span>
+          </div>
+
+          <div style={{marginTop:"5px"}}>
+            <span style={{color:"#ff6b35", fontWeight:700}}>俯仰 Pitch</span>
+            <span style={{color:"#334155"}}> = 仰俯 / Elevation tilt</span><br/>
+            <span style={{color:"#2d4060", fontSize:"9px"}}>绕法向(Y)轴旋转 · 前后倾斜<br/>
+            ⚠ 仰角(Elevation)≠俯仰角(Pitch)<br/>
+            &nbsp;&nbsp;仰角=地面对卫星的观测角</span>
+          </div>
+
+          <div style={{marginTop:"5px"}}>
+            <span style={{color:"#00ff88", fontWeight:700}}>滚动 Roll</span>
+            <span style={{color:"#334155"}}> = 横滚 / Banking</span><br/>
+            <span style={{color:"#2d4060", fontSize:"9px"}}>绕速度(X)轴旋转 · 卫星侧翻<br/>
+            ⚠ 横滚=滚动，同义可互用</span>
+          </div>
+
+          <div style={{marginTop:"6px", paddingTop:"6px", borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+            <span style={{color:"#e0b840", fontWeight:700}}>侧摆 CT</span>
+            <span style={{color:"#334155"}}> = Cross-track / Off-nadir</span><br/>
+            <span style={{color:"#2d4060", fontSize:"9px"}}>载荷跨轨指向偏转 · 幅宽偏移<br/>
+            离轴角(Off-nadir)=CT²+AT²开根</span>
+          </div>
+
+          <div style={{marginTop:"5px"}}>
+            <span style={{color:"#c084fc", fontWeight:700}}>前后倾 AT</span>
+            <span style={{color:"#334155"}}> = Along-track / Fore-aft</span><br/>
+            <span style={{color:"#2d4060", fontSize:"9px"}}>载荷沿轨指向偏转 · 超前/滞后</span>
+          </div>
         </div>
       </div>
 
