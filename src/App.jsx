@@ -211,7 +211,7 @@ export default function App() {
         const avgZ = f.verts.reduce((s, vi) => s + projVerts[vi][2], 0) / f.verts.length;
         return { ...f, avgZ };
       });
-      facesWithDepth.sort((a, b) => a.avgZ - b.avgZ);
+      facesWithDepth.sort((a, b) => b.avgZ - a.avgZ);
 
       facesWithDepth.forEach(f => {
         ctx.fillStyle = f.color;
@@ -267,8 +267,8 @@ export default function App() {
       });
 
       // --- Payload (camera) pointing nadir ---
-      const camP = toScreen([0, 0, 0.7], S);
-      const camEnd = toScreen([0, 0, 1.1], S);
+      const camP = toScreen([0, 0, -0.7], S);
+      const camEnd = toScreen([0, 0, -1.1], S);
       ctx.fillStyle = "rgba(255,107,53,0.8)";
       ctx.beginPath();
       ctx.arc(camP[0], camP[1], 6 * projVerts[0][3], 0, TAU);
@@ -354,7 +354,7 @@ export default function App() {
       ctx.fillText("→ 飞行方向", velEnd[0]+4, velEnd[1]);
 
       // Nadir indicator
-      const nadirEnd = toScreen([0, 0, 4], S);
+      const nadirEnd = toScreen([0, 0, -4], S);
       ctx.strokeStyle = "rgba(255,255,255,0.15)";
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 4]);
