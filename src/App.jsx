@@ -9,9 +9,9 @@ export default function App() {
   const [yaw, setYaw] = useState(0);
   const [pitch, setPitch] = useState(0);
   const [roll, setRoll] = useState(0);
-  const [orbitSpeed, setOrbitSpeed] = useState(1);
+  const [orbitSpeed, setOrbitSpeed] = useState(0.5);
   const [paused, setPaused] = useState(false);
-  const stateRef = useRef({ yaw: 0, pitch: 0, roll: 0, orbitSpeed: 1, paused: false });
+  const stateRef = useRef({ yaw: 0, pitch: 0, roll: 0, orbitSpeed: 0.5, paused: false });
 
   useEffect(() => {
     stateRef.current = { yaw, pitch, roll, orbitSpeed, paused };
@@ -189,7 +189,7 @@ export default function App() {
         return project(applyCamera(world), w, h);
       }
 
-      const S = 0.18; // satellite scale
+      const S = 0.38; // satellite scale
 
       // --- Draw satellite body (box) ---
       const bodyVerts = [
@@ -397,7 +397,7 @@ export default function App() {
     function draw() {
       const { paused: isPaused, orbitSpeed: spd } = stateRef.current;
       if (!isPaused) {
-        orbitAngle += 0.003 * spd;
+        orbitAngle += 0.0005 * spd;
       }
 
       const w = canvas.width;
