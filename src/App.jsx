@@ -11,11 +11,13 @@ export default function App() {
   const [roll, setRoll] = useState(0);
   const [orbitSpeed, setOrbitSpeed] = useState(0.5);
   const [paused, setPaused] = useState(false);
-  const stateRef = useRef({ yaw: 0, pitch: 0, roll: 0, orbitSpeed: 0.5, paused: false });
+  const [payloadCT, setPayloadCT] = useState(0);  // cross-track steering angle
+  const [payloadAT, setPayloadAT] = useState(0);  // along-track steering angle
+  const stateRef = useRef({ yaw: 0, pitch: 0, roll: 0, orbitSpeed: 0.5, paused: false, payloadCT: 0, payloadAT: 0 });
 
   useEffect(() => {
-    stateRef.current = { yaw, pitch, roll, orbitSpeed, paused };
-  }, [yaw, pitch, roll, orbitSpeed, paused]);
+    stateRef.current = { yaw, pitch, roll, orbitSpeed, paused, payloadCT, payloadAT };
+  }, [yaw, pitch, roll, orbitSpeed, paused, payloadCT, payloadAT]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -80,9 +82,25 @@ export default function App() {
       return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
     }
 
+    const EARTH_R = 3.0;
+    const ORBIT_R = 5.5;
+    const SWATH_CT = 12 * PI / 180;  // payload swath half-angle cross-track
+    const SWATH_AT = 4  * PI / 180;  // payload swath half-angle along-track
+
+    // Ray–Earth-sphere intersection; returns surface point or null
+    function rayEarth(orig, dir) {
+      const od = orig[0]*dir[0]+orig[1]*dir[1]+orig[2]*dir[2];
+      const oo = orig[0]*orig[0]+orig[1]*orig[1]+orig[2]*orig[2];
+      const disc = od*od - (oo - EARTH_R*EARTH_R);
+      if (disc < 0) return null;
+      const t = -od - Math.sqrt(disc);
+      if (t < 0) return null;
+      return [orig[0]+t*dir[0], orig[1]+t*dir[1], orig[2]+t*dir[2]];
+    }
+
     // Draw Earth
     function drawEarth(w, h) {
-      const earthR = 2.0;
+      const earthR = EARTH_R;
       const center = applyCamera([0, 0, 0]);
       const [cx, cy, cz, sc] = project(center, w, h);
       const screenR = earthR * sc * pixelScale;
@@ -133,9 +151,34 @@ export default function App() {
       return { cx, cy, screenR, cz };
     }
 
+    // Draw ground track (orbit projected onto Earth surface) + sub-satellite point
+    function drawGroundTrack(w, h, angle) {
+      ctx.strokeStyle = "rgba(255,240,100,0.18)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 7]);
+      ctx.beginPath();
+      for (let i = 0; i <= 120; i++) {
+        const a = (i / 120) * TAU;
+        const p = project(applyCamera([Math.cos(a)*EARTH_R, 0, Math.sin(a)*EARTH_R]), w, h);
+        if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Sub-satellite point (nadir point on surface)
+      const np = project(applyCamera([Math.cos(angle)*EARTH_R, 0, Math.sin(angle)*EARTH_R]), w, h);
+      ctx.fillStyle = "rgba(255,240,100,0.75)";
+      ctx.beginPath(); ctx.arc(np[0], np[1], 4, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "rgba(255,240,100,0.45)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(np[0]-7, np[1]); ctx.lineTo(np[0]+7, np[1]);
+      ctx.moveTo(np[0], np[1]-7); ctx.lineTo(np[0], np[1]+7);
+      ctx.stroke();
+    }
+
     // Draw orbit path
     function drawOrbit(w, h, earthR) {
-      const orbitR = 3.5;
+      const orbitR = ORBIT_R;
       ctx.strokeStyle = "rgba(0,240,255,0.12)";
       ctx.lineWidth = 1;
       ctx.setLineDash([6, 4]);
@@ -154,12 +197,14 @@ export default function App() {
 
     // Draw satellite
     function drawSatellite(w, h, angle) {
-      const { yaw: sy, pitch: sp, roll: sr } = stateRef.current;
+      const { yaw: sy, pitch: sp, roll: sr, payloadCT: pct, payloadAT: pat } = stateRef.current;
       const yawRad = sy * PI / 180;
       const pitchRad = sp * PI / 180;
       const rollRad = sr * PI / 180;
+      const pctRad = pct * PI / 180;
+      const patRad = pat * PI / 180;
 
-      const orbitR = 3.5;
+      const orbitR = ORBIT_R;
       const satPos = [Math.cos(angle) * orbitR, 0, Math.sin(angle) * orbitR];
 
       // Orbit frame: velocity dir, radial, normal
@@ -189,7 +234,7 @@ export default function App() {
         return project(applyCamera(world), w, h);
       }
 
-      const S = 0.38; // satellite scale
+      const S = 0.52; // satellite scale
 
       // --- Draw satellite body (box) ---
       const bodyVerts = [
@@ -267,21 +312,92 @@ export default function App() {
         ctx.beginPath(); ctx.moveTo(a1[0], a1[1]); ctx.lineTo(a2[0], a2[1]); ctx.stroke();
       });
 
-      // --- Payload (camera) pointing nadir ---
-      const camP = toScreen([0, 0, -0.7], S);
-      const camEnd = toScreen([0, 0, -1.1], S);
-      ctx.fillStyle = "rgba(255,107,53,0.8)";
-      ctx.beginPath();
-      ctx.arc(camP[0], camP[1], 6 * projVerts[0][3], 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(255,140,80,0.6)";
+      // --- Payload sensor box (on nadir face, body -Z side) ---
+      const plVerts = [
+        [-0.38,-0.32,-0.7], [0.38,-0.32,-0.7], [0.38,0.32,-0.7], [-0.38,0.32,-0.7],
+        [-0.38,-0.32,-1.15],[0.38,-0.32,-1.15],[0.38,0.32,-1.15], [-0.38,0.32,-1.15],
+      ];
+      const plFaces = [
+        { verts:[4,5,6,7], color:"rgba(255,107,53,0.9)"  },  // aperture face (Earth-facing)
+        { verts:[0,1,5,4], color:"rgba(180,65,20,0.75)"  },
+        { verts:[2,3,7,6], color:"rgba(180,65,20,0.75)"  },
+        { verts:[0,3,7,4], color:"rgba(160,55,15,0.75)"  },
+        { verts:[1,2,6,5], color:"rgba(160,55,15,0.75)"  },
+      ];
+      const plPts = plVerts.map(v => toScreen(v, S));
+      const plDepth = plFaces.map(f => ({
+        ...f, avgZ: f.verts.reduce((s,vi)=>s+plPts[vi][2],0)/f.verts.length
+      })).sort((a,b)=>b.avgZ-a.avgZ);
+      plDepth.forEach(f => {
+        ctx.fillStyle = f.color;
+        ctx.strokeStyle = "rgba(255,150,80,0.3)";
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        f.verts.forEach((vi,i)=>i===0?ctx.moveTo(plPts[vi][0],plPts[vi][1]):ctx.lineTo(plPts[vi][0],plPts[vi][1]));
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      });
+      // Aperture lens ring
+      const apertureCenter = toScreen([0, 0, -1.15], S);
+      ctx.fillStyle = "rgba(10,20,60,0.95)";
+      ctx.strokeStyle = "rgba(255,140,80,0.5)";
       ctx.lineWidth = 1;
-      ctx.stroke();
-      // Lens
-      ctx.fillStyle = "rgba(20,30,80,0.9)";
-      ctx.beginPath();
-      ctx.arc(camEnd[0], camEnd[1], 4 * projVerts[0][3], 0, TAU);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(apertureCenter[0], apertureCenter[1], 5, 0, TAU);
+      ctx.fill(); ctx.stroke();
+
+      // --- Payload boresight + swath footprint ---
+      // Payload body direction given CT/AT steering angles
+      // rotY(-patRad) tilts toward +X (forward); rotX(pctRad) tilts toward +Y (right)
+      function payloadBodyDir(ctOff, atOff) {
+        let d = [0, 0, -1];
+        d = rotY(d, -(patRad + atOff));
+        d = rotX(d, pctRad + ctOff);
+        return normalize(bodyToWorld(d));
+      }
+
+      const boresight = payloadBodyDir(0, 0);
+      const footCenter = rayEarth(satPos, boresight);
+
+      // FOV corner directions → surface points
+      const swathPts3D = [
+        rayEarth(satPos, payloadBodyDir(-SWATH_CT, -SWATH_AT)),
+        rayEarth(satPos, payloadBodyDir( SWATH_CT, -SWATH_AT)),
+        rayEarth(satPos, payloadBodyDir( SWATH_CT,  SWATH_AT)),
+        rayEarth(satPos, payloadBodyDir(-SWATH_CT,  SWATH_AT)),
+      ];
+
+      if (swathPts3D.every(p => p !== null)) {
+        const sp2 = swathPts3D.map(p => project(applyCamera(p), w, h));
+        // Fill footprint
+        ctx.fillStyle = "rgba(0,230,180,0.07)";
+        ctx.strokeStyle = "rgba(0,230,180,0.35)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        sp2.forEach((p,i)=>i===0?ctx.moveTo(p[0],p[1]):ctx.lineTo(p[0],p[1]));
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        // FOV cone lines from aperture to swath corners
+        const satScreen = project(applyCamera(satPos), w, h);
+        ctx.strokeStyle = "rgba(0,230,180,0.18)";
+        ctx.lineWidth = 0.8;
+        ctx.setLineDash([3, 5]);
+        sp2.forEach(p => {
+          ctx.beginPath(); ctx.moveTo(satScreen[0],satScreen[1]); ctx.lineTo(p[0],p[1]); ctx.stroke();
+        });
+        ctx.setLineDash([]);
+      }
+
+      // Boresight line to footprint center
+      if (footCenter) {
+        const fc = project(applyCamera(footCenter), w, h);
+        const satScreen = project(applyCamera(satPos), w, h);
+        ctx.strokeStyle = "rgba(255,200,80,0.55)";
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(satScreen[0],satScreen[1]); ctx.lineTo(fc[0],fc[1]); ctx.stroke();
+        ctx.setLineDash([]);
+        // Footprint center dot
+        ctx.fillStyle = "rgba(255,200,80,0.8)";
+        ctx.beginPath(); ctx.arc(fc[0],fc[1],3,0,TAU); ctx.fill();
+      }
 
       // --- Thruster flames ---
       const thrusterActive = Math.max(Math.abs(sy), Math.abs(sp), Math.abs(sr)) > 60;
@@ -402,7 +518,7 @@ export default function App() {
 
       const w = canvas.width;
       const h = canvas.height;
-      pixelScale = Math.min(w, h) / 18;
+      pixelScale = Math.min(w, h) / 28;
       ctx.clearRect(0, 0, w, h);
 
       // BG gradient
@@ -415,6 +531,7 @@ export default function App() {
       drawStars(w, h);
       drawOrbit(w, h);
       drawEarth(w, h);
+      drawGroundTrack(w, h, orbitAngle);
       drawSatellite(w, h, orbitAngle);
 
       raf = requestAnimationFrame(draw);
@@ -433,7 +550,7 @@ export default function App() {
   const maxAngle = Math.max(yawAbs, pitchAbs, rollAbs);
   const thrusterActive = maxAngle > 60;
 
-  const reset = () => { setYaw(0); setPitch(0); setRoll(0); };
+  const reset = () => { setYaw(0); setPitch(0); setRoll(0); setPayloadCT(0); setPayloadAT(0); };
   const setPreset = (y, p, r) => { setYaw(y); setPitch(p); setRoll(r); };
 
   return (
@@ -504,6 +621,17 @@ export default function App() {
           <button key={i} className="preset-btn" onClick={() => setPreset(...p.a)}>{p.l}</button>
         ))}
 
+        <SectionLabel>载荷指向控制</SectionLabel>
+        <AngleSlider label="侧摆 CT" axis="跨轨" color="#e0b840" value={payloadCT} min={-30} max={30} onChange={setPayloadCT} desc="载荷跨轨指向 · 幅宽中心偏移" />
+        <AngleSlider label="前后倾 AT" axis="沿轨" color="#c084fc" value={payloadAT} min={-30} max={30} onChange={setPayloadAT} desc="载荷沿轨指向 · 超前/滞后成像" />
+        <div style={{ fontSize:"10px", color:"#475569", fontFamily:"monospace", padding:"4px 8px",
+          background:"rgba(0,0,0,0.2)", borderRadius:"4px", lineHeight:1.7 }}>
+          离轴角 <span style={{color:"#e0b840", fontWeight:700}}>
+            {Math.sqrt(payloadCT**2+payloadAT**2).toFixed(1)}°
+          </span>
+          &nbsp;·&nbsp; 幅宽半角 <span style={{color:"#00e0b4"}}>±12°</span>
+        </div>
+
         <SectionLabel>轨道速度</SectionLabel>
         <div style={{ display: "flex", gap: "6px" }}>
           {[0.5, 1, 2, 4].map(s => (
@@ -532,7 +660,9 @@ export default function App() {
         }}>
           <span style={{ color: "#00ff88" }}>━</span> X 滚动轴（飞行方向）<br/>
           <span style={{ color: "#ff6b35" }}>━</span> Y 俯仰轴（轨道法向）<br/>
-          <span style={{ color: "#00f0ff" }}>━</span> Z 偏航轴（天底方向）
+          <span style={{ color: "#00f0ff" }}>━</span> Z 偏航轴（天底方向）<br/>
+          <span style={{ color: "#e0b840" }}>━</span> 载荷视轴 &amp; 地面足迹<br/>
+          <span style={{ color: "#ffef64" }}>✛</span> 星下点（地面轨迹）
         </div>
       </div>
 
